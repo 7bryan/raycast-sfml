@@ -31,7 +31,7 @@ public:
     float minimapScale = 0.2f; // 20% of its original size
     sf::RectangleShape rect(sf::Vector2f{(TILE_SIZE * minimapScale) - 1.0f,
                                          (TILE_SIZE * minimapScale) - 1.0f});
-    rect.setFillColor(sf::Color(100, 100, 100, 200));
+    rect.setFillColor(sf::Color(100, 200, 100));
 
     for (int i = 0; i < MAP_HEIGHT; i++) {
       for (int j = 0; j < MAP_WIDTH; j++) {
@@ -42,6 +42,17 @@ public:
         }
       }
     }
+  }
+
+  void drawCeilingFloor(sf::RenderWindow &window) {
+    sf::RectangleShape ceiling(sf::Vector2f{1600.f, 500.f});
+    ceiling.setFillColor(sf::Color(100, 120, 160));
+    window.draw(ceiling);
+
+    sf::RectangleShape floor(sf::Vector2f{1600.f, 500.f});
+    floor.setPosition({0.f, 500.f});
+    floor.setFillColor(sf::Color(70, 60, 50));
+    window.draw(floor);
   }
 
   bool isWall(float x, float y) { // determine if a specific coordinate is a
@@ -61,25 +72,32 @@ public:
   sf::Vector2f pos;
   float angle; // using radian
   float moveSpeed = 6.0f;
-  float rotSpeed = 0.06f;
+  float rotSpeed = 0.04f;
 
   Player(float x, float y) : pos(x, y), angle(0) {}
 
-  void update() {
+  void update(Map &map) {
     // Rotation
     if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::A))
       angle -= rotSpeed;
     if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::D))
       angle += rotSpeed;
 
+    float dx = std::cos(angle) * moveSpeed;
+    float dy = std::sin(angle) * moveSpeed;
+
     // movement
     if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W)) {
-      pos.x += std::cos(angle) * moveSpeed;
-      pos.y += std::sin(angle) * moveSpeed;
+      if (!map.isWall(pos.x + dx * 3.0f, pos.y))
+        pos.x += dx;
+      if (!map.isWall(pos.x, pos.y + dy * 3.0f))
+        pos.y += dy;
     }
     if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::S)) {
-      pos.x -= std::cos(angle) * moveSpeed;
-      pos.y -= std::sin(angle) * moveSpeed;
+      if (!map.isWall(pos.x - dx * 3.0f, pos.y))
+        pos.x -= dx;
+      if (!map.isWall(pos.x, pos.y - dy * 3.0f))
+        pos.y -= dy;
     }
   }
 
@@ -187,11 +205,12 @@ int main() {
     }
 
     window.clear(sf::Color::Black);
-    map.draw(window);
 
-    player.update();
+    map.drawCeilingFloor(window);
+    player.update(map);
     player.castRays(window, map);
     player.draw(window);
+    map.draw(window);
 
     window.display();
   }
