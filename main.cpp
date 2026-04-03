@@ -118,9 +118,39 @@ public:
         rayY += stepY;
       }
 
+      // 3D Projection
+      // calculate the raw distance
+      float distance =
+          std::sqrt(std::pow(rayX - pos.x, 2) + std::pow(rayY - pos.y, 2));
+
+      // fixing the fish eye effect
+      distance *= std::cos(currentRayAngle - angle);
+
+      // calculate the height of wall
+      float wallHeight = (TILE_SIZE * 600.f) / distance;
+      if (wallHeight > 1000)
+        wallHeight =
+            1000; // cap the wall height to prevent it from being too tall
+
+      // drawing the 3D vertical line
+      sf::RectangleShape wallStrip(
+          sf::Vector2f{(1600.f / NUM_RAYS), wallHeight});
+
+      // making the further walls darker (lighting)
+      float brightness = 150.f - (distance / 10.f);
+      if (brightness < 30)
+        brightness = 30;
+      wallStrip.setFillColor(sf::Color(brightness, brightness, brightness));
+
+      // center the wall strip vertically
+      wallStrip.setPosition(
+          {i * (1600.f / NUM_RAYS), (1000.f - wallHeight) / 2.f});
+
+      window.draw(wallStrip);
+
       // draw the ray
-      sf::Vertex rayLine[] = {{pos, sf::Color(255, 0, 0, 100)},
-                              {{rayX, rayY}, sf::Color::Red}};
+      sf::Vertex rayLine[] = {{pos, sf::Color(255, 0, 0, 50)},
+                              {{rayX, rayY}, sf::Color(255, 0, 0, 50)}};
       window.draw(rayLine, 2, sf::PrimitiveType::Lines);
     }
   }
