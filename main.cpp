@@ -1,5 +1,6 @@
 #include <SFML/Graphics.hpp>
 #include <SFML/Window.hpp>
+#define _USE_MATH_DEFINES
 #include <cmath>
 #include <optional>
 
@@ -9,19 +10,22 @@ const int MAP_WIDTH = 16;
 const int MAP_HEIGHT = 10;
 float TILE_SIZE = 100.f;
 
+const float FOV = 60.f * (M_PI / 180.f); // convert to radian (60 degree)
+const int NUM_RAYS = 120;                // number of rays to cast
+
 class Map {
 public:
   int map[MAP_HEIGHT][MAP_WIDTH] = {
-      {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+      {1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+      {0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+      {0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+      {0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
       {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
       {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-      {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-      {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-      {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-      {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-      {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-      {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-      {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}};
+      {0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0},
+      {0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0},
+      {0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0},
+      {1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1}};
 
   void draw(sf::RenderWindow &window) {
     sf::RectangleShape rect(sf::Vector2f{TILE_SIZE - 1.0f, TILE_SIZE - 1.0f});
@@ -92,23 +96,33 @@ public:
   }
 
   void castRays(sf::RenderWindow &window, Map &map) {
-    float rayX = pos.x;
-    float rayY = pos.y;
+    // calcualting the starting angle of the first ray
+    float startAngle = angle - (FOV / 2.0f);
 
-    // steps to check for wall
-    float stepX = std::cos(angle);
-    float stepY = std::sin(angle);
+    // calculate the angle increment between each ray
+    float angleStep = FOV / static_cast<float>(NUM_RAYS);
 
-    // keep moveing until hit a wall
-    while (!map.isWall(rayX, rayY)) {
-      rayX += stepX;
-      rayY += stepY;
+    for (int i = 0; i < NUM_RAYS; i++) {
+      float currentRayAngle = startAngle + (i * angleStep);
+
+      float rayX = pos.x;
+      float rayY = pos.y;
+
+      // direction for current ray
+      float stepX = std::cos(currentRayAngle);
+      float stepY = std::sin(currentRayAngle);
+
+      // keep moveing until hit a wall
+      while (!map.isWall(rayX, rayY)) {
+        rayX += stepX;
+        rayY += stepY;
+      }
+
+      // draw the ray
+      sf::Vertex rayLine[] = {{pos, sf::Color(255, 0, 0, 100)},
+                              {{rayX, rayY}, sf::Color::Red}};
+      window.draw(rayLine, 2, sf::PrimitiveType::Lines);
     }
-
-    // draw the ray
-    sf::Vertex rayLine[] = {{pos, sf::Color::Red},
-                            {{rayX, rayY}, sf::Color::Red}};
-    window.draw(rayLine, 2, sf::PrimitiveType::Lines);
   }
 };
 
