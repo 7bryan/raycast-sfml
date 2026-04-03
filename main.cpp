@@ -28,13 +28,16 @@ public:
       {1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1}};
 
   void draw(sf::RenderWindow &window) {
-    sf::RectangleShape rect(sf::Vector2f{TILE_SIZE - 1.0f, TILE_SIZE - 1.0f});
-    rect.setFillColor(sf::Color(100, 100, 100));
+    float minimapScale = 0.2f; // 20% of its original size
+    sf::RectangleShape rect(sf::Vector2f{(TILE_SIZE * minimapScale) - 1.0f,
+                                         (TILE_SIZE * minimapScale) - 1.0f});
+    rect.setFillColor(sf::Color(100, 100, 100, 200));
 
     for (int i = 0; i < MAP_HEIGHT; i++) {
       for (int j = 0; j < MAP_WIDTH; j++) {
         if (map[i][j] == 1) {
-          rect.setPosition(sf::Vector2f{j * TILE_SIZE, i * TILE_SIZE});
+          rect.setPosition(sf::Vector2f{j * TILE_SIZE * minimapScale,
+                                        i * TILE_SIZE * minimapScale});
           window.draw(rect);
         }
       }
@@ -81,17 +84,20 @@ public:
   }
 
   void draw(sf::RenderWindow &window) {
-    sf::CircleShape circle(15.f);
+    float minimapScale = 0.2f;
+    sf::Vector2f minimapPos = pos * minimapScale;
+
+    sf::CircleShape circle(5.f);
     circle.setFillColor(sf::Color::Red);
-    circle.setOrigin({15.f, 15.f});
-    circle.setPosition(pos);
+    circle.setOrigin({5.f, 5.f});
+    circle.setPosition(minimapPos);
     window.draw(circle);
 
     // draw the direction line (nose)
-    sf::Vertex line[] = {
-        {pos, sf::Color::Yellow},
-        {pos + sf::Vector2f(std::cos(angle) * 40, std::sin(angle) * 40),
-         sf::Color::Yellow}};
+    sf::Vertex line[] = {{minimapPos, sf::Color::Yellow},
+                         {minimapPos + sf::Vector2f(std::cos(angle) * 10.f,
+                                                    std::sin(angle) * 10.f),
+                          sf::Color::Yellow}};
     window.draw(line, 2, sf::PrimitiveType::Lines);
   }
 
@@ -120,27 +126,31 @@ public:
 
       // 3D Projection
       // calculate the raw distance
-      float distance =
-          std::sqrt(std::pow(rayX - pos.x, 2) + std::pow(rayY - pos.y, 2));
+      float dx = rayX - pos.x;
+      float dy = rayY - pos.y;
+      float distance = std::sqrt(dx * dx + dy * dy);
 
       // fixing the fish eye effect
       distance *= std::cos(currentRayAngle - angle);
 
+      if (distance < 1.0f)
+        distance = 1.0f;
+
       // calculate the height of wall
-      float wallHeight = (TILE_SIZE * 600.f) / distance;
-      if (wallHeight > 1000)
+      float wallHeight = (TILE_SIZE * 800.f) / distance;
+      if (wallHeight > 1000.f)
         wallHeight =
-            1000; // cap the wall height to prevent it from being too tall
+            1000.f; // cap the wall height to prevent it from being too tall
 
       // drawing the 3D vertical line
       sf::RectangleShape wallStrip(
-          sf::Vector2f{(1600.f / NUM_RAYS), wallHeight});
+          sf::Vector2f{(1600.f / NUM_RAYS) + 1.0f, wallHeight});
 
       // making the further walls darker (lighting)
-      float brightness = 150.f - (distance / 10.f);
-      if (brightness < 30)
-        brightness = 30;
-      wallStrip.setFillColor(sf::Color(brightness, brightness, brightness));
+      int colorVal = static_cast<int>(200 - (distance / 5.f));
+      if (colorVal < 50)
+        colorVal = 50;
+      wallStrip.setFillColor(sf::Color(colorVal, colorVal, colorVal));
 
       // center the wall strip vertically
       wallStrip.setPosition(
@@ -148,9 +158,11 @@ public:
 
       window.draw(wallStrip);
 
-      // draw the ray
-      sf::Vertex rayLine[] = {{pos, sf::Color(255, 0, 0, 50)},
-                              {{rayX, rayY}, sf::Color(255, 0, 0, 50)}};
+      // draw the ray on the minimap
+      float minimapScale = 0.2f;
+      sf::Vertex rayLine[] = {
+          {pos * minimapScale, sf::Color(255, 0, 0, 80)},
+          {sf::Vector2f{rayX, rayY} * minimapScale, sf::Color(255, 0, 0, 80)}};
       window.draw(rayLine, 2, sf::PrimitiveType::Lines);
     }
   }
