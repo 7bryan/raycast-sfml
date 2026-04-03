@@ -1,0 +1,13 @@
+# build files
+build/
+*.exe
+*.o
+*.obj
+
+# SFML / CMake cache
+CMakeFiles/
+CMakeCache.txt
+
+# OS junk
+.DS_Store
+Thumbs.db
