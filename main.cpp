@@ -1,7 +1,9 @@
 #include <SFML/Graphics.hpp>
+#include <SFML/Graphics/Image.hpp>
 #include <SFML/Window.hpp>
 #define _USE_MATH_DEFINES
 #include <cmath>
+#include <iostream>
 #include <optional>
 
 // sfml version 3.0.2
@@ -119,69 +121,123 @@ public:
     window.draw(line, 2, sf::PrimitiveType::Lines);
   }
 
-  void castRays(sf::RenderWindow &window, Map &map) {
-    // calcualting the starting angle of the first ray
+  void castRays(sf::RenderWindow &window, Map &map, sf::Texture &tex) {
     float startAngle = angle - (FOV / 2.0f);
-
-    // calculate the angle increment between each ray
     float angleStep = FOV / static_cast<float>(NUM_RAYS);
 
     for (int i = 0; i < NUM_RAYS; i++) {
       float currentRayAngle = startAngle + (i * angleStep);
+      float rayDirX = std::cos(currentRayAngle);
+      float rayDirY = std::sin(currentRayAngle);
 
-      float rayX = pos.x;
-      float rayY = pos.y;
+      // Which box of the map we're in
+      int mapX = static_cast<int>(pos.x / TILE_SIZE);
+      int mapY = static_cast<int>(pos.y / TILE_SIZE);
 
-      // direction for current ray
-      float stepX = std::cos(currentRayAngle);
-      float stepY = std::sin(currentRayAngle);
+      // Length of ray from one x or y-side to next x or y-side
+      // We use 1e30 to avoid division by zero
+      float deltaDistX = (rayDirX == 0) ? 1e30f : std::abs(1.0f / rayDirX);
+      float deltaDistY = (rayDirY == 0) ? 1e30f : std::abs(1.0f / rayDirY);
 
-      // keep moveing until hit a wall
-      while (!map.isWall(rayX, rayY)) {
-        rayX += stepX;
-        rayY += stepY;
+      float sideDistX, sideDistY;
+      int stepX, stepY;
+
+      // Calculate step and initial sideDist
+      if (rayDirX < 0) {
+        stepX = -1;
+        sideDistX = (pos.x / TILE_SIZE - mapX) * deltaDistX;
+      } else {
+        stepX = 1;
+        sideDistX = (mapX + 1.0 - pos.x / TILE_SIZE) * deltaDistX;
+      }
+      if (rayDirY < 0) {
+        stepY = -1;
+        sideDistY = (pos.y / TILE_SIZE - mapY) * deltaDistY;
+      } else {
+        stepY = 1;
+        sideDistY = (mapY + 1.0 - pos.y / TILE_SIZE) * deltaDistY;
       }
 
-      // 3D Projection
-      // calculate the raw distance
-      float dx = rayX - pos.x;
-      float dy = rayY - pos.y;
-      float distance = std::sqrt(dx * dx + dy * dy);
+      // Perform DDA
+      int side; // 0 for X-side, 1 for Y-side
+      while (true) {
+        // Jump to next map square in X or Y direction
+        if (sideDistX < sideDistY) {
+          sideDistX += deltaDistX;
+          mapX += stepX;
+          side = 0;
+        } else {
+          sideDistY += deltaDistY;
+          mapY += stepY;
+          side = 1;
+        }
+        // booundary check
+        if (mapX < 0 || mapX >= MAP_WIDTH || mapY < 0 || mapY >= MAP_HEIGHT)
+          break; // treat out of bounds as wall
 
-      // fixing the fish eye effect
-      distance *= std::cos(currentRayAngle - angle);
+        if (map.map[mapY][mapX])
+          break;
+      }
 
-      if (distance < 1.0f)
-        distance = 1.0f;
+      // Calculate distance projected on camera direction (prevents fish-eye)
+      float perpWallDist;
+      if (side == 0)
+        perpWallDist = (sideDistX - deltaDistX);
+      else
+        perpWallDist = (sideDistY - deltaDistY);
 
-      // calculate the height of wall
-      float wallHeight = (TILE_SIZE * 800.f) / distance;
-      if (wallHeight > 1000.f)
-        wallHeight =
-            1000.f; // cap the wall height to prevent it from being too tall
+      if (perpWallDist < 0.1f)
+        perpWallDist = 0.1f;
 
-      // drawing the 3D vertical line
+      // Calculate height of line to draw on screen
+      float wallHeight =
+          (1.0f / perpWallDist) * 800.f; // 800 is a scaling factor
+
+      // --- TEXTURE MAPPING ---
+      float wallX; // exact hit point on the wall (0.0 to 1.0)
+      if (side == 0)
+        wallX = (pos.y / TILE_SIZE) + perpWallDist * rayDirY;
+      else
+        wallX = (pos.x / TILE_SIZE) + perpWallDist * rayDirX;
+      wallX -= std::floor(wallX);
+
+      int texX = static_cast<int>(wallX * static_cast<float>(tex.getSize().x));
+
+      // Flip texture if we're looking "backwards" to maintain consistency
+      if ((side == 0 && rayDirX > 0) || (side == 1 && rayDirY < 0))
+        texX = tex.getSize().x - texX - 1;
+
+      // Draw the vertical strip
       sf::RectangleShape wallStrip(
-          sf::Vector2f{(1600.f / NUM_RAYS) + 1.0f, wallHeight});
+          sf::Vector2f{(1600.f / NUM_RAYS) + 0.5f, wallHeight});
+      wallStrip.setTexture(&tex);
+      wallStrip.setTextureRect(
+          sf::IntRect({texX, 0}, {1, (int)tex.getSize().y}));
 
-      // making the further walls darker (lighting)
-      int colorVal = static_cast<int>(200 - (distance / 5.f));
-      if (colorVal < 50)
-        colorVal = 50;
-      wallStrip.setFillColor(sf::Color(colorVal, colorVal, colorVal));
+      // Apply Shading
+      float distanceFade =
+          std::min(1.0f, 15.0f / (perpWallDist * 5.0f)); // Simple darkness fade
+      sf::Color wallColor =
+          (side == 1) ? sf::Color(160, 160, 160) : sf::Color::White;
 
-      // center the wall strip vertically
+      float hitX = pos.x + rayDirX * perpWallDist * TILE_SIZE;
+      float hitY = pos.y + rayDirY * perpWallDist * TILE_SIZE;
+
+      float minimapScale = 0.2f;
+
+      sf::Vertex rayline[] = {
+          {pos * minimapScale, sf::Color(255, 0, 0)},
+          {sf::Vector2f{hitX, hitY} * minimapScale, sf::Color(255, 0, 0)}};
+      window.draw(rayline, 2, sf::PrimitiveType::Lines);
+
+      // Combine distance fade with side shading
+      wallStrip.setFillColor(sf::Color(wallColor.r * distanceFade,
+                                       wallColor.g * distanceFade,
+                                       wallColor.b * distanceFade));
+
       wallStrip.setPosition(
           {i * (1600.f / NUM_RAYS), (1000.f - wallHeight) / 2.f});
-
       window.draw(wallStrip);
-
-      // draw the ray on the minimap
-      float minimapScale = 0.2f;
-      sf::Vertex rayLine[] = {
-          {pos * minimapScale, sf::Color(255, 0, 0, 80)},
-          {sf::Vector2f{rayX, rayY} * minimapScale, sf::Color(255, 0, 0, 80)}};
-      window.draw(rayLine, 2, sf::PrimitiveType::Lines);
     }
   }
 };
@@ -189,6 +245,16 @@ public:
 int main() {
   sf::RenderWindow window(sf::VideoMode({1600, 1000}), "Raycasting Demo");
   window.setFramerateLimit(60);
+
+  sf::Texture wallTexture;
+  if (!wallTexture.loadFromFile("brick.jpg")) {
+    // create a colored texture if the file is missing
+    sf::Image placeholder;
+    placeholder.resize({2, 2}, sf::Color::Red);
+    placeholder.setPixel({0, 0}, sf::Color::Magenta);
+    placeholder.setPixel({1, 1}, sf::Color::Magenta);
+    wallTexture.loadFromImage(placeholder);
+  }
 
   Map map;
   Player player(300.f, 300.f);
@@ -208,7 +274,7 @@ int main() {
 
     map.drawCeilingFloor(window);
     player.update(map);
-    player.castRays(window, map);
+    player.castRays(window, map, wallTexture);
     player.draw(window);
     map.draw(window);
 
